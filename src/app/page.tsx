@@ -19,6 +19,11 @@ import {
   Map,
   Bot,
   Share2,
+  Search,
+  MousePointerClick,
+  Layers,
+  Terminal,
+  Clock,
 } from "lucide-react";
 
 /* ------------------------------------------------------------------ */
@@ -104,7 +109,7 @@ function Hero() {
             href="/login"
             className="pulse-cta inline-flex items-center gap-2 rounded-xl bg-accent px-7 py-3.5 text-base font-bold text-white transition-colors hover:bg-accent-hover"
           >
-            Start Free &mdash; 1,000 Pages
+            Start Free &mdash; 500 Credits
             <ArrowRight className="h-4 w-4" />
           </a>
           <a
@@ -143,10 +148,10 @@ function Hero() {
         {/* Stats row */}
         <div className="mt-14 grid grid-cols-2 gap-6 sm:grid-cols-4">
           {[
-            { label: "10x cheaper", icon: Zap },
-            { label: "Zero data retention", icon: Eye },
+            { label: "8 API Endpoints", icon: Layers },
+            { label: "3 SDKs + CLI + MCP", icon: Terminal },
+            { label: "< 500ms avg response", icon: Clock },
             { label: "100% open source", icon: Code },
-            { label: "Credits never expire", icon: Shield },
           ].map((s) => (
             <div
               key={s.label}
@@ -172,15 +177,15 @@ const comparisonRows: {
   blazeGood: boolean;
   fireBad: boolean;
 }[] = [
-  { feature: "Pay-per-use pricing", blaze: "Yes", fire: "No \u2014 monthly tiers only", blazeGood: true, fireBad: true },
-  { feature: "Credits roll over", blaze: "Yes, forever", fire: "No \u2014 expire monthly", blazeGood: true, fireBad: true },
-  { feature: "Social media scraping", blaze: "Yes", fire: "Not supported", blazeGood: true, fireBad: true },
+  { feature: "API endpoints", blaze: "8 (incl. Agent)", fire: "7", blazeGood: true, fireBad: true },
+  { feature: "SDKs", blaze: "Python, Node.js, CLI, MCP", fire: "Python, Node.js", blazeGood: true, fireBad: true },
+  { feature: "Free tier", blaze: "500 credits, 2 concurrent", fire: "500 credits, 2 concurrent", blazeGood: true, fireBad: false },
+  { feature: "AI Agent", blaze: "Included in Growth+", fire: "Preview only", blazeGood: true, fireBad: true },
+  { feature: "Browser rendering", blaze: "Included", fire: "Included", blazeGood: true, fireBad: false },
+  { feature: "Batch scraping", blaze: "Included", fire: "Included", blazeGood: true, fireBad: false },
+  { feature: "Self-hostable", blaze: "Yes", fire: "Yes", blazeGood: true, fireBad: false },
+  { feature: "Framework integrations", blaze: "LangChain + LlamaIndex", fire: "LangChain + LlamaIndex", blazeGood: true, fireBad: false },
   { feature: "Zero data retention", blaze: "Default for all", fire: "Enterprise only ($$$)", blazeGood: true, fireBad: true },
-  { feature: "Self-hosted feature parity", blaze: "100%", fire: "Cloud-only features locked", blazeGood: true, fireBad: true },
-  { feature: "Anti-bot stealth mode", blaze: "Included free", fire: "Premium only", blazeGood: true, fireBad: true },
-  { feature: "SDKs", blaze: "Python, Node, Go, Rust, C#, PHP", fire: "Python, Node, Go, Rust only", blazeGood: true, fireBad: true },
-  { feature: "Rate limit on free tier", blaze: "10 concurrent", fire: "2 concurrent", blazeGood: true, fireBad: true },
-  { feature: "robots.txt", blaze: "Configurable", fire: "Always enforced", blazeGood: true, fireBad: false },
 ];
 
 function ComparisonTable() {
@@ -222,7 +227,7 @@ function ComparisonTable() {
                         row.fireBad ? "text-red-400" : "text-muted"
                       }`}
                     >
-                      <X className="h-4 w-4" />
+                      {row.fireBad ? <X className="h-4 w-4" /> : <Check className="h-4 w-4" />}
                       {row.fire}
                     </span>
                   </td>
@@ -242,33 +247,43 @@ function ComparisonTable() {
 const features = [
   {
     icon: Globe,
-    title: "Scrape API",
-    desc: "One URL in, clean markdown out. Handles JS rendering, anti-bot, dynamic content. 50ms average response.",
+    title: "Scrape",
+    desc: "Single URL to clean markdown, HTML, or text. JS rendering, anti-bot bypass, screenshots, and PDF export included.",
   },
   {
     icon: Bot,
-    title: "Crawl API",
-    desc: "Feed us a domain, we crawl everything. Real-time progress webhooks. Resume failed crawls. No page limits.",
+    title: "Crawl",
+    desc: "BFS crawl with configurable depth and page limits. Fully async with job polling and real-time progress.",
   },
   {
     icon: Map,
-    title: "Map API",
-    desc: "Discover every URL on a site in seconds. Sitemap parsing + deep link extraction. Build your crawl plan first.",
+    title: "Map",
+    desc: "Discover every URL on a site via sitemap parsing and deep link extraction. Build your crawl plan first.",
   },
   {
     icon: Cpu,
-    title: "Extract API",
-    desc: "Structured data extraction powered by Claude AI. Define your schema, get perfect JSON back. Every time.",
+    title: "Extract",
+    desc: "AI-powered structured data extraction with JSON schema. Powered by Claude. Define your shape, get perfect data.",
+  },
+  {
+    icon: Search,
+    title: "Search",
+    desc: "Web search plus full page content in a single call. Get search results with scraped markdown, not just links.",
+  },
+  {
+    icon: MousePointerClick,
+    title: "Interact",
+    desc: "Click, type, scroll, and wait on pages before scraping. Handle auth flows, cookie banners, and dynamic content.",
+  },
+  {
+    icon: Layers,
+    title: "Batch",
+    desc: "Scrape up to 100 URLs in one request. Webhook callbacks on completion. Parallelized for maximum throughput.",
   },
   {
     icon: Share2,
-    title: "Social Scrape",
-    desc: "Twitter, Reddit, LinkedIn, YouTube \u2014 the platforms others won\u2019t touch. We built it because you asked.",
-  },
-  {
-    icon: Server,
-    title: "Self-Host",
-    desc: "Docker compose up. That\u2019s it. Full feature parity. No cloud-only gotchas. Your infra, your rules.",
+    title: "Agent",
+    desc: "Autonomous AI web research agent. Give it a prompt and a schema, get structured data back. Handles multi-step browsing.",
   },
 ];
 
@@ -280,10 +295,10 @@ function FeaturesGrid() {
           Everything You Need to <span className="text-accent glow-text">Scrape the Web</span>
         </h2>
         <p className="mx-auto mt-4 max-w-xl text-center text-muted">
-          Six APIs. One key. Zero nonsense.
+          Eight APIs. One key. Zero nonsense.
         </p>
 
-        <div className="mt-14 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="mt-14 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
           {features.map((f) => (
             <div
               key={f.title}
@@ -309,30 +324,30 @@ const codeExamples = [
   {
     label: "Python SDK",
     code: `from blazecrawl import BlazeCrawl
-
 client = BlazeCrawl(api_key="bc_live_xxx")
 
-result = client.scrape(
-    url="https://example.com",
-    format="markdown"
-)
+# Scrape a page
+result = client.scrape("https://example.com")
+print(result["data"]["markdown"])
 
-print(result.markdown)
-# => "# Example Domain\\n\\nThis domain is for use in ..."`,
+# AI-powered extraction
+data = client.extract("https://example.com", schema={"title": "string", "price": "number"})
+print(data["data"]["extracted"])`,
   },
   {
     label: "Node.js SDK",
-    code: `import BlazeCrawl from "@blazecrawl/sdk";
+    code: `import { BlazeCrawl } from 'blazecrawl';
+const client = new BlazeCrawl({ apiKey: 'bc_live_xxx' });
 
-const client = new BlazeCrawl({ apiKey: "bc_live_xxx" });
+// Scrape a page
+const result = await client.scrape('https://example.com');
+console.log(result.data.markdown);
 
-const result = await client.scrape({
-  url: "https://example.com",
-  format: "markdown",
+// AI-powered extraction
+const data = await client.extract('https://example.com', {
+  schema: { title: 'string', price: 'number' }
 });
-
-console.log(result.markdown);
-// => "# Example Domain\\n\\nThis domain is for use in ..."`,
+console.log(data.data.extracted);`,
   },
   {
     label: "cURL",
@@ -387,37 +402,72 @@ function CodeExamples() {
 /* ------------------------------------------------------------------ */
 /*  PRICING                                                           */
 /* ------------------------------------------------------------------ */
-const tiers = [
+const allTiers = [
   {
     name: "Free",
     price: "$0",
     period: "forever",
-    pages: "1,000 pages/month",
-    concurrent: "10 concurrent",
-    support: "Community support",
+    credits: "500 credits/mo",
+    concurrent: "2 concurrent",
+    features: "Scrape, Crawl, Map",
     badge: null,
+    visible: true,
   },
   {
-    name: "Pro",
-    price: "$29",
+    name: "Hobby",
+    price: "$16",
     period: "/mo",
-    pages: "50,000 pages/month",
-    concurrent: "100 concurrent",
-    support: "Priority support",
+    credits: "3,000 credits/mo",
+    concurrent: "5 concurrent",
+    features: "+ Extract, Search",
+    badge: null,
+    visible: false,
+  },
+  {
+    name: "Standard",
+    price: "$83",
+    period: "/mo",
+    credits: "100,000 credits/mo",
+    concurrent: "50 concurrent",
+    features: "+ Batch, Interact",
     badge: "Most Popular",
+    visible: true,
+  },
+  {
+    name: "Growth",
+    price: "$333",
+    period: "/mo",
+    credits: "500,000 credits/mo",
+    concurrent: "100 concurrent",
+    features: "+ Agent",
+    badge: null,
+    visible: true,
   },
   {
     name: "Scale",
-    price: "$99",
+    price: "$599",
     period: "/mo",
-    pages: "Unlimited pages",
-    concurrent: "500 concurrent",
-    support: "Dedicated support + SLA",
+    credits: "1,000,000 credits/mo",
+    concurrent: "150 concurrent",
+    features: "Everything",
     badge: null,
+    visible: false,
+  },
+  {
+    name: "Enterprise",
+    price: "Custom",
+    period: "",
+    credits: "Unlimited credits",
+    concurrent: "500 concurrent",
+    features: "+ SSO, SLA, Zero-retention",
+    badge: null,
+    visible: true,
   },
 ];
 
 function Pricing() {
+  const visibleTiers = allTiers.filter((t) => t.visible);
+
   return (
     <section id="pricing" className="py-24 px-6 grid-bg">
       <div className="mx-auto max-w-6xl">
@@ -426,17 +476,16 @@ function Pricing() {
         </h2>
         <p className="mx-auto mt-4 max-w-xl text-center text-muted">
           All tiers: credits roll over, zero data retention, full API access.
-          Overage: $0.001/page. No surprise bills.
         </p>
 
-        <div className="mt-14 grid gap-6 sm:grid-cols-3">
-          {tiers.map((t) => {
-            const isPro = t.name === "Pro";
+        <div className="mt-14 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+          {visibleTiers.map((t) => {
+            const isPopular = t.badge === "Most Popular";
             return (
               <div
                 key={t.name}
                 className={`relative flex flex-col rounded-2xl border p-7 transition-all ${
-                  isPro
+                  isPopular
                     ? "border-accent/60 bg-surface glow-orange"
                     : "border-border/60 bg-surface/60 hover:border-accent/30"
                 }`}
@@ -449,12 +498,12 @@ function Pricing() {
                 <h3 className="text-lg font-bold">{t.name}</h3>
                 <div className="mt-3 flex items-baseline gap-1">
                   <span className="text-4xl font-extrabold">{t.price}</span>
-                  <span className="text-muted">{t.period}</span>
+                  {t.period && <span className="text-muted">{t.period}</span>}
                 </div>
                 <ul className="mt-6 flex flex-col gap-3 text-sm text-muted">
                   <li className="flex items-center gap-2">
                     <Check className="h-4 w-4 text-green-400" />
-                    {t.pages}
+                    {t.credits}
                   </li>
                   <li className="flex items-center gap-2">
                     <Check className="h-4 w-4 text-green-400" />
@@ -462,7 +511,7 @@ function Pricing() {
                   </li>
                   <li className="flex items-center gap-2">
                     <Check className="h-4 w-4 text-green-400" />
-                    {t.support}
+                    {t.features}
                   </li>
                   <li className="flex items-center gap-2">
                     <Check className="h-4 w-4 text-green-400" />
@@ -472,35 +521,46 @@ function Pricing() {
                     <Check className="h-4 w-4 text-green-400" />
                     Zero data retention
                   </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="h-4 w-4 text-green-400" />
-                    Full API access
-                  </li>
                 </ul>
                 <a
-                  href="/login"
+                  href={t.name === "Enterprise" ? "mailto:sales@blazecrawl.dev" : "/login"}
                   className={`mt-8 block rounded-xl py-3 text-center text-sm font-bold transition-colors ${
-                    isPro
+                    isPopular
                       ? "bg-accent text-white hover:bg-accent-hover"
                       : "border border-border bg-surface-2 text-foreground hover:bg-surface"
                   }`}
                 >
-                  {t.name === "Free" ? "Start Free" : `Get ${t.name}`}
+                  {t.name === "Free"
+                    ? "Start Free"
+                    : t.name === "Enterprise"
+                      ? "Contact Sales"
+                      : `Get ${t.name}`}
                 </a>
               </div>
             );
           })}
         </div>
 
+        {/* See all plans link */}
+        <div className="mt-8 text-center">
+          <a
+            href="/pricing"
+            className="inline-flex items-center gap-1.5 text-sm font-semibold text-accent transition-colors hover:text-accent-hover"
+          >
+            See all 6 plans
+            <ArrowRight className="h-3.5 w-3.5" />
+          </a>
+        </div>
+
         {/* Callout */}
-        <div className="mt-12 rounded-2xl border border-accent/30 bg-accent/5 p-6 text-center">
+        <div className="mt-8 rounded-2xl border border-accent/30 bg-accent/5 p-6 text-center">
           <p className="text-base font-semibold leading-relaxed">
             Firecrawl charges{" "}
-            <span className="text-red-400 font-bold">$83/mo for 100K pages</span> with expiring
-            credits. We give you{" "}
-            <span className="text-green-400 font-bold">50K for $29</span> with credits that never
-            expire.{" "}
-            <span className="text-accent font-bold">Do the math.</span>
+            <span className="text-red-400 font-bold">$83/mo for 100K credits</span> with expiring
+            credits. We match that at{" "}
+            <span className="text-green-400 font-bold">$83/mo for 100K credits</span> with credits
+            that never expire and more APIs included.{" "}
+            <span className="text-accent font-bold">Same price. More value.</span>
           </p>
         </div>
       </div>
@@ -582,7 +642,7 @@ function FinalCTA() {
           <ArrowRight className="h-5 w-5" />
         </a>
         <p className="mt-5 text-sm text-muted">
-          No credit card required. 1,000 free pages. Forever.
+          No credit card required. 500 free credits. Forever.
         </p>
       </div>
     </section>

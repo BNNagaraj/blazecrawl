@@ -1,9 +1,12 @@
 import { NextRequest } from "next/server";
 import { scrapeUrl } from "@/lib/scraper";
 import { authenticateRequest, trackUsage } from "@/lib/auth";
+import { getUsage, TIERS } from "@/lib/api-keys";
 import { withCors, optionsResponse } from "@/lib/cors";
 
 export const dynamic = "force-dynamic";
+
+const EXTRACT_COST = 5; // credits per extract call
 
 export async function OPTIONS() {
   return optionsResponse();
@@ -14,6 +17,17 @@ export async function POST(req: NextRequest) {
     const auth = await authenticateRequest(req.headers.get("authorization"));
     if (!auth.valid) {
       return withCors({ success: false, error: auth.error }, 401);
+    }
+
+    // Check credits BEFORE calling Claude API (cost protection)
+    if (auth.userId && auth.userId !== "dev-user") {
+      const usage = await getUsage(auth.userId);
+      if (usage.remainingCredits < EXTRACT_COST) {
+        return withCors({
+          success: false,
+          error: `Insufficient credits. Extract costs ${EXTRACT_COST} credits. You have ${usage.remainingCredits} remaining. Upgrade your plan at https://blazecrawl.dev/dashboard`,
+        }, 429);
+      }
     }
 
     const body = await req.json();
@@ -64,7 +78,7 @@ Return ONLY valid JSON matching the schema. No markdown, no explanation.`,
       extracted = { raw: text };
     }
 
-    await trackUsage(auth.apiKey!, 5);
+    await trackUsage(auth.apiKey!, EXTRACT_COST);
 
     return withCors({
       success: true,

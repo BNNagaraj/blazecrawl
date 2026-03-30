@@ -17,13 +17,28 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { url, format = "markdown", onlyMainContent } = body;
+    const {
+      url,
+      format = "markdown",
+      onlyMainContent,
+      renderJs,
+      screenshot,
+      pdf,
+      skipCache,
+    } = body;
 
     if (!url) {
       return withCors({ success: false, error: "url is required" }, 400);
     }
 
-    const result = await scrapeUrl(url, { format, onlyMainContent });
+    const result = await scrapeUrl(url, {
+      format,
+      onlyMainContent,
+      ...(renderJs !== undefined && { renderJs }),
+      ...(screenshot !== undefined && { screenshot }),
+      ...(pdf !== undefined && { pdf }),
+      ...(skipCache !== undefined && { skipCache }),
+    });
 
     if (!result.success) {
       return withCors({ success: false, error: result.error }, 500);

@@ -20,6 +20,10 @@ import {
   ArrowRight,
   ExternalLink,
   Zap,
+  Search,
+  MousePointer,
+  Layers,
+  Brain,
 } from "lucide-react";
 
 /* ------------------------------------------------------------------ */
@@ -38,6 +42,10 @@ const sections: Section[] = [
   { id: "crawl", label: "Crawl", icon: Bot },
   { id: "map", label: "Map", icon: Map },
   { id: "extract", label: "Extract", icon: Cpu },
+  { id: "search", label: "Search", icon: Search },
+  { id: "interact", label: "Interact", icon: MousePointer },
+  { id: "batch-scrape", label: "Batch Scrape", icon: Layers },
+  { id: "agent", label: "Agent", icon: Brain },
   { id: "sdks", label: "SDKs", icon: Code },
   { id: "rate-limits", label: "Rate Limits", icon: Gauge },
   { id: "errors", label: "Errors", icon: AlertTriangle },
@@ -427,8 +435,8 @@ export default function DocsPage() {
             />
 
             <Tip>
-              The free tier includes 1,000 pages per month with 10 concurrent requests.
-              Credits roll over — they never expire.
+              The free tier includes 500 credits per month with 2 concurrent requests.
+              Upgrade anytime from your dashboard.
             </Tip>
 
             {/* ============================================================ */}
@@ -509,6 +517,10 @@ export default function DocsPage() {
                 { name: "waitFor", type: "number", required: false, description: "Wait time in ms after page load (for dynamic content)" },
                 { name: "timeout", type: "number", required: false, description: "Maximum request timeout in ms (default: 30000)" },
                 { name: "headers", type: "object", required: false, description: "Custom HTTP headers to send with the request" },
+                { name: "renderJs", type: "boolean", required: false, description: "Use Playwright for JavaScript rendering" },
+                { name: "screenshot", type: "boolean", required: false, description: "Include a base64 screenshot in the response" },
+                { name: "pdf", type: "boolean", required: false, description: "Include a base64 PDF in the response" },
+                { name: "skipCache", type: "boolean", required: false, description: "Bypass response cache and fetch fresh content" },
               ]}
             />
 
@@ -790,6 +802,363 @@ export default function DocsPage() {
             </Tip>
 
             {/* ============================================================ */}
+            {/*  SEARCH                                                      */}
+            {/* ============================================================ */}
+            <SectionHeading id="search">
+              <Search className="h-6 w-6 text-accent" />
+              Search
+            </SectionHeading>
+
+            <Paragraph>
+              The Search endpoint performs a web search and returns scraped, LLM-ready content for
+              each result. Combine search with scraping in a single API call — perfect for RAG
+              pipelines and research agents.
+            </Paragraph>
+
+            <Endpoint method="POST" path="/api/v1/search" />
+
+            <ParamTable
+              params={[
+                { name: "query", type: "string", required: true, description: "The search query string" },
+                { name: "limit", type: "number", required: false, description: "Maximum number of results to return (default: 5)" },
+                { name: "format", type: "string", required: false, description: "Output format: \"markdown\" (default), \"html\", \"text\"" },
+                { name: "country", type: "string", required: false, description: "Country code for localized results (e.g., \"us\", \"gb\", \"de\")" },
+                { name: "lang", type: "string", required: false, description: "Language code for results (e.g., \"en\", \"fr\", \"ja\")" },
+              ]}
+            />
+
+            <SubHeading>Example Request</SubHeading>
+            <CodeBlock
+              language="bash"
+              title="Search the web"
+              code={`curl -X POST https://blazecrawl-dev.web.app/api/v1/search \\
+  -H "Authorization: Bearer bc_live_xxx" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "query": "best practices for web scraping 2026",
+    "limit": 3,
+    "format": "markdown",
+    "country": "us",
+    "lang": "en"
+  }'`}
+            />
+
+            <SubHeading>Response</SubHeading>
+            <CodeBlock
+              language="json"
+              title="200 OK"
+              code={`{
+  "success": true,
+  "data": {
+    "query": "best practices for web scraping 2026",
+    "results": [
+      {
+        "url": "https://example.com/web-scraping-guide",
+        "title": "Web Scraping Best Practices in 2026",
+        "description": "A comprehensive guide to ethical and efficient web scraping...",
+        "markdown": "# Web Scraping Best Practices\\n\\nIn 2026, the landscape of web scraping...",
+        "metadata": {
+          "statusCode": 200,
+          "language": "en"
+        }
+      }
+    ]
+  }
+}`}
+            />
+
+            <Tip>
+              Search costs 1 credit per result returned. If Google API credentials are not
+              configured, BlazeCrawl automatically falls back to DuckDuckGo for search results.
+            </Tip>
+
+            {/* ============================================================ */}
+            {/*  INTERACT                                                    */}
+            {/* ============================================================ */}
+            <SectionHeading id="interact">
+              <MousePointer className="h-6 w-6 text-accent" />
+              Interact
+            </SectionHeading>
+
+            <Paragraph>
+              The Interact endpoint lets you perform browser actions on a page — click buttons,
+              fill forms, scroll, take screenshots, and more. Powered by Playwright, it enables
+              scraping of content that requires user interaction to reveal.
+            </Paragraph>
+
+            <Endpoint method="POST" path="/api/v1/interact" />
+
+            <ParamTable
+              params={[
+                { name: "url", type: "string", required: true, description: "The URL to interact with" },
+                { name: "actions", type: "Action[]", required: true, description: "Array of actions to perform sequentially" },
+                { name: "format", type: "string", required: false, description: "Output format: \"markdown\" (default), \"html\", \"text\"" },
+              ]}
+            />
+
+            <SubHeading>Action Types</SubHeading>
+            <div className="my-4 overflow-x-auto rounded-xl border border-border/60">
+              <table className="w-full text-left text-sm">
+                <thead>
+                  <tr className="border-b border-border/60 bg-surface/60">
+                    <th className="px-4 py-3 font-semibold text-muted">Type</th>
+                    <th className="px-4 py-3 font-semibold text-muted">Fields</th>
+                    <th className="px-4 py-3 font-semibold text-muted">Description</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[
+                    { type: "click", fields: "selector", desc: "Click an element matching the CSS selector" },
+                    { type: "type", fields: "selector, value", desc: "Type text into an input field" },
+                    { type: "scroll", fields: "direction", desc: "Scroll the page (\"up\" or \"down\")" },
+                    { type: "wait", fields: "milliseconds", desc: "Wait for a specified duration" },
+                    { type: "press", fields: "key", desc: "Press a keyboard key (e.g., \"Enter\", \"Tab\")" },
+                    { type: "screenshot", fields: "—", desc: "Capture a screenshot at this step" },
+                  ].map((a) => (
+                    <tr key={a.type} className="border-b border-border/30 last:border-0">
+                      <td className="px-4 py-3">
+                        <code className="rounded-md bg-surface-2 px-1.5 py-0.5 text-xs font-mono text-accent">
+                          {a.type}
+                        </code>
+                      </td>
+                      <td className="px-4 py-3 text-muted">
+                        <code className="text-xs">{a.fields}</code>
+                      </td>
+                      <td className="px-4 py-3 text-muted">{a.desc}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <SubHeading>Example Request</SubHeading>
+            <CodeBlock
+              language="bash"
+              title="Interact with a page"
+              code={`curl -X POST https://blazecrawl-dev.web.app/api/v1/interact \\
+  -H "Authorization: Bearer bc_live_xxx" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "url": "https://example.com/search",
+    "actions": [
+      { "type": "type", "selector": "input[name=q]", "value": "BlazeCrawl" },
+      { "type": "press", "key": "Enter" },
+      { "type": "wait", "milliseconds": 2000 },
+      { "type": "screenshot" }
+    ],
+    "format": "markdown"
+  }'`}
+            />
+
+            <SubHeading>Response</SubHeading>
+            <CodeBlock
+              language="json"
+              title="200 OK"
+              code={`{
+  "success": true,
+  "data": {
+    "url": "https://example.com/search?q=BlazeCrawl",
+    "content": "# Search Results\\n\\n1. BlazeCrawl - Turn websites into LLM-ready data...",
+    "format": "markdown",
+    "screenshots": [
+      "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAA..."
+    ]
+  }
+}`}
+            />
+
+            <Tip>
+              Interact costs 2 credits per request. It requires Playwright to be available on the
+              server — if Playwright is not installed, the API returns a{" "}
+              <code className="rounded-md bg-surface-2 px-1 py-0.5 text-xs font-mono text-red-400">501 Not Implemented</code>{" "}
+              response.
+            </Tip>
+
+            {/* ============================================================ */}
+            {/*  BATCH SCRAPE                                                */}
+            {/* ============================================================ */}
+            <SectionHeading id="batch-scrape">
+              <Layers className="h-6 w-6 text-accent" />
+              Batch Scrape
+            </SectionHeading>
+
+            <Paragraph>
+              The Batch Scrape endpoint lets you scrape up to 100 URLs in a single request. Jobs
+              are processed asynchronously — poll for status or provide a webhook URL to be notified
+              when the batch completes.
+            </Paragraph>
+
+            <SubHeading>Start a Batch</SubHeading>
+            <Endpoint method="POST" path="/api/v1/batch/scrape" />
+
+            <ParamTable
+              params={[
+                { name: "urls", type: "string[]", required: true, description: "Array of URLs to scrape (max 100)" },
+                { name: "format", type: "string", required: false, description: "Output format: \"markdown\" (default), \"html\", \"text\"" },
+                { name: "webhook", type: "string", required: false, description: "URL to receive a POST when batch completes" },
+                { name: "renderJs", type: "boolean", required: false, description: "Use Playwright for JavaScript rendering" },
+              ]}
+            />
+
+            <SubHeading>Example Request</SubHeading>
+            <CodeBlock
+              language="bash"
+              title="Start a batch scrape"
+              code={`curl -X POST https://blazecrawl-dev.web.app/api/v1/batch/scrape \\
+  -H "Authorization: Bearer bc_live_xxx" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "urls": [
+      "https://example.com/page-1",
+      "https://example.com/page-2",
+      "https://example.com/page-3"
+    ],
+    "format": "markdown",
+    "webhook": "https://your-server.com/webhook/batch-complete"
+  }'`}
+            />
+
+            <SubHeading>Response (Batch Started)</SubHeading>
+            <CodeBlock
+              language="json"
+              title="202 Accepted"
+              code={`{
+  "success": true,
+  "data": {
+    "batchId": "batch_abc123xyz",
+    "status": "processing",
+    "totalUrls": 3
+  }
+}`}
+            />
+
+            <SubHeading>Check Batch Status</SubHeading>
+            <Endpoint method="GET" path="/api/v1/batch/scrape/:id" />
+
+            <CodeBlock
+              language="bash"
+              title="Poll batch status"
+              code={`curl https://blazecrawl-dev.web.app/api/v1/batch/scrape/batch_abc123xyz \\
+  -H "Authorization: Bearer bc_live_xxx"`}
+            />
+
+            <CodeBlock
+              language="json"
+              title="200 OK — Completed"
+              code={`{
+  "success": true,
+  "data": {
+    "batchId": "batch_abc123xyz",
+    "status": "completed",
+    "totalUrls": 3,
+    "completedUrls": 3,
+    "results": [
+      {
+        "url": "https://example.com/page-1",
+        "markdown": "# Page 1\\n\\nContent...",
+        "metadata": { "title": "Page 1", "statusCode": 200 }
+      }
+    ]
+  }
+}`}
+            />
+
+            <Tip>
+              Batch Scrape costs 1 credit per URL. Use the{" "}
+              <code className="rounded-md bg-surface-2 px-1 py-0.5 text-xs font-mono text-accent">webhook</code>{" "}
+              parameter to avoid polling — BlazeCrawl will POST the full results to your URL when
+              the batch completes.
+            </Tip>
+
+            {/* ============================================================ */}
+            {/*  AGENT                                                       */}
+            {/* ============================================================ */}
+            <SectionHeading id="agent">
+              <Brain className="h-6 w-6 text-accent" />
+              Agent
+            </SectionHeading>
+
+            <Paragraph>
+              The Agent endpoint uses AI to autonomously browse the web and complete research tasks.
+              Give it a prompt, and the agent will plan its approach, visit multiple pages, extract
+              data, and synthesize results. Ideal for complex research that spans multiple sites.
+            </Paragraph>
+
+            <SubHeading>Start an Agent Job</SubHeading>
+            <Endpoint method="POST" path="/api/v1/agent" />
+
+            <ParamTable
+              params={[
+                { name: "prompt", type: "string", required: true, description: "Natural language description of the research task" },
+                { name: "maxSteps", type: "number", required: false, description: "Maximum steps the agent can take (default: 10, max: 50)" },
+                { name: "maxUrls", type: "number", required: false, description: "Maximum URLs the agent can visit (default: 5)" },
+              ]}
+            />
+
+            <SubHeading>Example Request</SubHeading>
+            <CodeBlock
+              language="bash"
+              title="Start an agent job"
+              code={`curl -X POST https://blazecrawl-dev.web.app/api/v1/agent \\
+  -H "Authorization: Bearer bc_live_xxx" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "prompt": "Find the pricing pages for the top 3 web scraping APIs and compare their free tier limits",
+    "maxSteps": 20,
+    "maxUrls": 10
+  }'`}
+            />
+
+            <SubHeading>Response (Job Started)</SubHeading>
+            <CodeBlock
+              language="json"
+              title="202 Accepted"
+              code={`{
+  "success": true,
+  "data": {
+    "jobId": "agent_abc123xyz",
+    "status": "running"
+  }
+}`}
+            />
+
+            <SubHeading>Check Agent Status</SubHeading>
+            <Endpoint method="GET" path="/api/v1/agent/:id" />
+
+            <CodeBlock
+              language="bash"
+              title="Poll agent status"
+              code={`curl https://blazecrawl-dev.web.app/api/v1/agent/agent_abc123xyz \\
+  -H "Authorization: Bearer bc_live_xxx"`}
+            />
+
+            <CodeBlock
+              language="json"
+              title="200 OK — Completed"
+              code={`{
+  "success": true,
+  "data": {
+    "jobId": "agent_abc123xyz",
+    "status": "completed",
+    "stepsUsed": 12,
+    "urlsVisited": 6,
+    "result": "## Web Scraping API Pricing Comparison\\n\\n| Provider | Free Tier | Rate Limit |\\n|---|---|---|\\n| BlazeCrawl | 500 credits/mo | 2 concurrent |\\n| ...",
+    "sources": [
+      "https://blazecrawl.dev/pricing",
+      "https://competitor1.com/pricing",
+      "https://competitor2.com/pricing"
+    ]
+  }
+}`}
+            />
+
+            <Tip>
+              The Agent endpoint costs 5 credits per step and requires a Growth tier subscription or
+              above. Use <code className="rounded-md bg-surface-2 px-1 py-0.5 text-xs font-mono text-accent">maxSteps</code> and{" "}
+              <code className="rounded-md bg-surface-2 px-1 py-0.5 text-xs font-mono text-accent">maxUrls</code> to control costs.
+            </Tip>
+
+            {/* ============================================================ */}
             {/*  SDKs                                                        */}
             {/* ============================================================ */}
             <SectionHeading id="sdks">
@@ -798,18 +1167,20 @@ export default function DocsPage() {
             </SectionHeading>
 
             <Paragraph>
-              Official SDKs are available for all major languages. Each SDK wraps the REST API with
-              idiomatic methods, type safety, automatic retries, and built-in error handling.
+              Official SDKs, CLI tools, and integrations make it easy to use BlazeCrawl from any
+              environment. Each SDK wraps the REST API with idiomatic methods, type safety, automatic
+              retries, and built-in error handling.
             </Paragraph>
 
+            <SubHeading>SDKs &amp; Tools</SubHeading>
             <div className="my-6 grid gap-3 sm:grid-cols-2">
               {[
-                { lang: "Python", install: "pip install blazecrawl", pkg: "PyPI" },
-                { lang: "Node.js", install: "npm install @blazecrawl/sdk", pkg: "npm" },
-                { lang: "Go", install: "go get github.com/blazecrawl/blazecrawl-go", pkg: "Go Modules" },
-                { lang: "Rust", install: "cargo add blazecrawl", pkg: "crates.io" },
-                { lang: "C#", install: "dotnet add package BlazeCrawl", pkg: "NuGet" },
-                { lang: "PHP", install: "composer require blazecrawl/sdk", pkg: "Packagist" },
+                { lang: "Node.js SDK", install: "npm install blazecrawl", pkg: "npm" },
+                { lang: "Python SDK", install: "pip install blazecrawl", pkg: "PyPI" },
+                { lang: "CLI", install: "npm install -g blazecrawl-cli", pkg: "npm" },
+                { lang: "MCP Server", install: "npm install blazecrawl-mcp", pkg: "npm" },
+                { lang: "LangChain", install: "pip install langchain-blazecrawl", pkg: "PyPI" },
+                { lang: "LlamaIndex", install: "pip install llama-index-blazecrawl", pkg: "PyPI" },
               ].map((sdk) => (
                 <div
                   key={sdk.lang}
@@ -824,7 +1195,42 @@ export default function DocsPage() {
               ))}
             </div>
 
-            <SubHeading>Python Example</SubHeading>
+            <SubHeading>Node.js SDK</SubHeading>
+            <CodeBlock
+              language="typescript"
+              title="Node.js / TypeScript"
+              code={`import BlazeCrawl from "blazecrawl";
+
+const client = new BlazeCrawl({ apiKey: "bc_live_xxx" });
+
+// Scrape a single page
+const result = await client.scrape({
+  url: "https://example.com",
+  format: "markdown",
+});
+console.log(result.markdown);
+
+// Crawl an entire site
+const crawl = await client.crawl({
+  url: "https://docs.example.com",
+  maxPages: 100,
+  format: "markdown",
+});
+for (const page of crawl.data) {
+  console.log(\`\${page.url}: \${page.markdown.length} chars\`);
+}
+
+// Search the web
+const search = await client.search({
+  query: "web scraping best practices",
+  limit: 5,
+});
+for (const r of search.results) {
+  console.log(\`\${r.title}: \${r.url}\`);
+}`}
+            />
+
+            <SubHeading>Python SDK</SubHeading>
             <CodeBlock
               language="python"
               title="Python SDK"
@@ -862,43 +1268,85 @@ product = client.extract(
 print(f"{product.data['name']}: \${product.data['price']}")`}
             />
 
-            <SubHeading>Node.js Example</SubHeading>
+            <SubHeading>CLI</SubHeading>
             <CodeBlock
-              language="typescript"
-              title="Node.js / TypeScript SDK"
-              code={`import BlazeCrawl from "@blazecrawl/sdk";
+              language="bash"
+              title="BlazeCrawl CLI"
+              code={`# Install globally
+npm install -g blazecrawl-cli
 
-const client = new BlazeCrawl({ apiKey: "bc_live_xxx" });
+# Authenticate
+blazecrawl auth set bc_live_xxx
 
-// Scrape a single page
-const result = await client.scrape({
-  url: "https://example.com",
-  format: "markdown",
-});
-console.log(result.markdown);
+# Scrape a URL
+blazecrawl scrape https://example.com --format markdown
 
-// Crawl an entire site
-const crawl = await client.crawl({
-  url: "https://docs.example.com",
-  maxPages: 100,
-  format: "markdown",
-});
-for (const page of crawl.data) {
-  console.log(\`\${page.url}: \${page.markdown.length} chars\`);
-}
+# Crawl a site
+blazecrawl crawl https://docs.example.com --max-pages 50
 
-// Extract structured data
-const product = await client.extract({
-  url: "https://store.example.com/product/1",
-  schema: {
-    type: "object",
-    properties: {
-      name: { type: "string" },
-      price: { type: "number" },
-    },
-  },
-});
-console.log(\`\${product.data.name}: $\${product.data.price}\`);`}
+# Search the web
+blazecrawl search "web scraping tutorials" --limit 5`}
+            />
+
+            <SubHeading>MCP Server</SubHeading>
+            <CodeBlock
+              language="bash"
+              title="MCP Server for AI Agents"
+              code={`# Install the MCP server
+npm install blazecrawl-mcp
+
+# Run as a Model Context Protocol server
+npx blazecrawl-mcp --api-key bc_live_xxx
+
+# Add to your Claude Desktop / AI agent config:
+# {
+#   "mcpServers": {
+#     "blazecrawl": {
+#       "command": "npx",
+#       "args": ["blazecrawl-mcp", "--api-key", "bc_live_xxx"]
+#     }
+#   }
+# }`}
+            />
+
+            <SubHeading>LangChain Integration</SubHeading>
+            <CodeBlock
+              language="python"
+              title="LangChain"
+              code={`from langchain_blazecrawl import BlazeCrawlLoader
+
+loader = BlazeCrawlLoader(
+    api_key="bc_live_xxx",
+    url="https://docs.example.com",
+    mode="crawl",
+    params={"max_pages": 50, "format": "markdown"}
+)
+documents = loader.load()
+
+# Use with any LangChain chain or retriever
+for doc in documents:
+    print(f"{doc.metadata['url']}: {len(doc.page_content)} chars")`}
+            />
+
+            <SubHeading>LlamaIndex Integration</SubHeading>
+            <CodeBlock
+              language="python"
+              title="LlamaIndex"
+              code={`from llama_index_blazecrawl import BlazeCrawlReader
+
+reader = BlazeCrawlReader(api_key="bc_live_xxx")
+
+# Load documents from a website
+documents = reader.load_data(
+    url="https://docs.example.com",
+    max_pages=50
+)
+
+# Build an index
+from llama_index.core import VectorStoreIndex
+index = VectorStoreIndex.from_documents(documents)
+query_engine = index.as_query_engine()
+response = query_engine.query("How do I authenticate?")`}
             />
 
             {/* ============================================================ */}
@@ -915,35 +1363,65 @@ console.log(\`\${product.data.name}: $\${product.data.price}\`);`}
               response with a <code className="rounded-md bg-surface-2 px-1.5 py-0.5 text-xs font-mono text-accent">Retry-After</code> header.
             </Paragraph>
 
+            <SubHeading>Pricing Tiers</SubHeading>
             <div className="my-4 overflow-x-auto rounded-xl border border-border/60">
               <table className="w-full text-left text-sm">
                 <thead>
                   <tr className="border-b border-border/60 bg-surface/60">
-                    <th className="px-4 py-3 font-semibold text-muted">Plan</th>
-                    <th className="px-4 py-3 font-semibold text-muted">Requests/min</th>
+                    <th className="px-4 py-3 font-semibold text-muted">Tier</th>
+                    <th className="px-4 py-3 font-semibold text-muted">Credits/Mo</th>
                     <th className="px-4 py-3 font-semibold text-muted">Concurrent</th>
-                    <th className="px-4 py-3 font-semibold text-muted">Pages/month</th>
+                    <th className="px-4 py-3 font-semibold text-muted">Price</th>
                   </tr>
                 </thead>
                 <tbody>
-                  <tr className="border-b border-border/30">
-                    <td className="px-4 py-3 font-medium text-foreground">Free</td>
-                    <td className="px-4 py-3 text-muted">20</td>
-                    <td className="px-4 py-3 text-muted">10</td>
-                    <td className="px-4 py-3 text-muted">1,000</td>
+                  {[
+                    { tier: "Free", credits: "500", concurrent: "2", price: "$0" },
+                    { tier: "Hobby", credits: "3,000", concurrent: "5", price: "$16/mo" },
+                    { tier: "Standard", credits: "100,000", concurrent: "50", price: "$83/mo" },
+                    { tier: "Growth", credits: "500,000", concurrent: "100", price: "$333/mo" },
+                    { tier: "Scale", credits: "1,000,000", concurrent: "150", price: "$599/mo" },
+                    { tier: "Enterprise", credits: "Unlimited", concurrent: "500", price: "Custom" },
+                  ].map((t) => (
+                    <tr key={t.tier} className="border-b border-border/30 last:border-0">
+                      <td className="px-4 py-3 font-medium text-foreground">{t.tier}</td>
+                      <td className="px-4 py-3 text-muted">{t.credits}</td>
+                      <td className="px-4 py-3 text-muted">{t.concurrent}</td>
+                      <td className="px-4 py-3 text-muted">{t.price}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <SubHeading>Credit Costs</SubHeading>
+            <Paragraph>
+              Different operations consume different amounts of credits. Plan your usage accordingly:
+            </Paragraph>
+            <div className="my-4 overflow-x-auto rounded-xl border border-border/60">
+              <table className="w-full text-left text-sm">
+                <thead>
+                  <tr className="border-b border-border/60 bg-surface/60">
+                    <th className="px-4 py-3 font-semibold text-muted">Operation</th>
+                    <th className="px-4 py-3 font-semibold text-muted">Credits</th>
                   </tr>
-                  <tr className="border-b border-border/30">
-                    <td className="px-4 py-3 font-medium text-accent">Pro</td>
-                    <td className="px-4 py-3 text-muted">100</td>
-                    <td className="px-4 py-3 text-muted">100</td>
-                    <td className="px-4 py-3 text-muted">50,000</td>
-                  </tr>
-                  <tr>
-                    <td className="px-4 py-3 font-medium text-foreground">Scale</td>
-                    <td className="px-4 py-3 text-muted">1,000</td>
-                    <td className="px-4 py-3 text-muted">500</td>
-                    <td className="px-4 py-3 text-muted">Unlimited</td>
-                  </tr>
+                </thead>
+                <tbody>
+                  {[
+                    { op: "Scrape", cost: "1" },
+                    { op: "Crawl", cost: "1 per page" },
+                    { op: "Map", cost: "1" },
+                    { op: "Search", cost: "1 per result" },
+                    { op: "Interact", cost: "2" },
+                    { op: "Batch Scrape", cost: "1 per URL" },
+                    { op: "Extract", cost: "5" },
+                    { op: "Agent", cost: "5 per step" },
+                  ].map((c) => (
+                    <tr key={c.op} className="border-b border-border/30 last:border-0">
+                      <td className="px-4 py-3 font-medium text-foreground">{c.op}</td>
+                      <td className="px-4 py-3 text-muted">{c.cost}</td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
@@ -1046,7 +1524,7 @@ Retry-After: 12`}
             <div className="mt-20 rounded-2xl border border-accent/30 bg-accent/5 p-8 text-center">
               <h3 className="text-xl font-extrabold text-foreground">Ready to start scraping?</h3>
               <p className="mt-2 text-sm text-muted">
-                Get 1,000 free pages. No credit card required.
+                Get 500 free credits. No credit card required.
               </p>
               <div className="mt-6 flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
                 <a

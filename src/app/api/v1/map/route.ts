@@ -5,6 +5,8 @@ import { withCors, optionsResponse } from "@/lib/cors";
 
 export const dynamic = "force-dynamic";
 
+const USER_AGENT = "BlazeCrawl/1.0 (+https://blazecrawl.dev)";
+
 export async function OPTIONS() {
   return optionsResponse();
 }
@@ -29,11 +31,11 @@ export async function POST(req: NextRequest) {
     // Fetch page + sitemap in parallel
     const [pageRes, sitemapRes] = await Promise.allSettled([
       fetch(url, {
-        headers: { "User-Agent": "BlazeCrawl/1.0 (+https://blazecrawl.dev)" },
+        headers: { "User-Agent": USER_AGENT },
         signal: AbortSignal.timeout(15000),
       }),
       fetch(`${base.origin}/sitemap.xml`, {
-        headers: { "User-Agent": "BlazeCrawl/1.0 (+https://blazecrawl.dev)" },
+        headers: { "User-Agent": USER_AGENT },
         signal: AbortSignal.timeout(10000),
       }),
     ]);

@@ -14,19 +14,21 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
-  const snap = await getDoc(doc(getAppDb(), "crawlJobs", id));
+  const snap = await getDoc(doc(getAppDb(), "batchJobs", id));
 
   if (!snap.exists()) {
-    return withCors({ success: false, error: "Job not found" }, 404);
+    return withCors({ success: false, error: "Batch job not found" }, 404);
   }
 
   const job = snap.data();
   return withCors({
     success: true,
     data: {
+      batchId: id,
       status: job.status,
-      pagesFound: job.pagesFound,
-      pagesCrawled: job.pagesCrawled,
+      totalUrls: job.totalUrls,
+      completedUrls: job.completedUrls,
+      failedUrls: job.failedUrls,
       results: job.results,
     },
   });

@@ -15,12 +15,18 @@ import {
   Braces,
   ToggleLeft,
   ToggleRight,
+  Search,
+  MapPin,
+  Monitor,
+  Camera,
+  FileDown,
 } from "lucide-react";
 import { collection, query, where, getDocs } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useAuth } from "@/lib/useAuth";
 
-type Format = "markdown" | "html" | "text" | "json";
+type Format = "markdown" | "html" | "text" | "json" | "pdf";
+type ApiMode = "scrape" | "search" | "map";
 
 interface ScrapeResponse {
   success: boolean;
@@ -29,6 +35,7 @@ interface ScrapeResponse {
     html?: string;
     text?: string;
     json?: unknown;
+    screenshot?: string;
     metadata?: {
       title?: string;
       description?: string;
@@ -38,6 +45,9 @@ interface ScrapeResponse {
       [key: string]: unknown;
     };
   };
+  // search/map responses
+  results?: Array<{ url: string; title?: string; description?: string; markdown?: string }>;
+  links?: string[];
   error?: string;
 }
 
@@ -46,6 +56,13 @@ const formatOptions: { value: Format; label: string; icon: React.ElementType }[]
   { value: "html", label: "HTML", icon: Code },
   { value: "text", label: "Text", icon: Type },
   { value: "json", label: "JSON", icon: Braces },
+  { value: "pdf", label: "PDF", icon: FileDown },
+];
+
+const apiModes: { value: ApiMode; label: string; icon: React.ElementType }[] = [
+  { value: "scrape", label: "Scrape", icon: Monitor },
+  { value: "search", label: "Search", icon: Search },
+  { value: "map", label: "Map", icon: MapPin },
 ];
 
 export default function Playground() {
@@ -53,6 +70,9 @@ export default function Playground() {
   const [url, setUrl] = useState("");
   const [format, setFormat] = useState<Format>("markdown");
   const [onlyMainContent, setOnlyMainContent] = useState(true);
+  const [renderJs, setRenderJs] = useState(false);
+  const [screenshot, setScreenshot] = useState(false);
+  const [apiMode, setApiMode] = useState<ApiMode>("scrape");
   const [timeout, setTimeoutVal] = useState(30000);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<ScrapeResponse | null>(null);
@@ -77,7 +97,7 @@ export default function Playground() {
     loadKey();
   }, [user]);
 
-  const handleScrape = async () => {
+  const handleSubmit = async () => {
     if (!url.trim()) return;
     if (!apiKey) {
       setResult({ success: false, error: "No API key found. Create one in the API Keys tab first." });
@@ -90,18 +110,41 @@ export default function Playground() {
     const start = performance.now();
     try {
       const apiBase = process.env.NEXT_PUBLIC_API_URL || "";
-      const res = await fetch(`${apiBase}/api/v1/scrape`, {
+      let endpoint = "/api/v1/scrape";
+      let body: Record<string, unknown> = {};
+
+      if (apiMode === "scrape") {
+        endpoint = "/api/v1/scrape";
+        body = {
+          url: url.trim(),
+          format: format === "pdf" ? "markdown" : format,
+          onlyMainContent,
+          timeout,
+          ...(renderJs && { renderJs: true }),
+          ...(screenshot && { screenshot: true }),
+          ...(format === "pdf" && { pdf: true }),
+        };
+      } else if (apiMode === "search") {
+        endpoint = "/api/v1/search";
+        body = {
+          query: url.trim(),
+          timeout,
+        };
+      } else if (apiMode === "map") {
+        endpoint = "/api/v1/map";
+        body = {
+          url: url.trim(),
+          timeout,
+        };
+      }
+
+      const res = await fetch(`${apiBase}${endpoint}`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${apiKey}`,
         },
-        body: JSON.stringify({
-          url: url.trim(),
-          format,
-          onlyMainContent,
-          timeout,
-        }),
+        body: JSON.stringify(body),
       });
 
       const data: ScrapeResponse = await res.json();
@@ -118,14 +161,25 @@ export default function Playground() {
     }
   };
 
-  const getOutput = (): string => {
+  function getOutput(): string {
+    if (apiMode === "search" && result?.results) {
+      return result.results
+        .map((r, i) => `${i + 1}. ${r.title ?? r.url}\n   ${r.url}\n   ${r.description ?? ""}`)
+        .join("\n\n");
+    }
+    if (apiMode === "map" && result?.links) {
+      return result.links.join("\n");
+    }
     if (!result?.data) return "";
-    if (format === "markdown") return result.data.markdown ?? "";
-    if (format === "html") return result.data.html ?? "";
-    if (format === "text") return result.data.text ?? result.data.markdown ?? "";
-    if (format === "json") return JSON.stringify(result.data.json ?? result.data, null, 2);
-    return "";
-  };
+    switch (format) {
+      case "markdown": return result.data.markdown ?? "";
+      case "html":     return result.data.html ?? "";
+      case "text":     return result.data.text ?? result.data.markdown ?? "";
+      case "json":     return JSON.stringify(result.data.json ?? result.data, null, 2);
+      case "pdf":      return result.data.markdown ?? "(PDF requested — check download)";
+      default:         return "";
+    }
+  }
 
   const copyOutput = () => {
     navigator.clipboard.writeText(getOutput());
@@ -138,38 +192,71 @@ export default function Playground() {
       <div className="mb-8">
         <h2 className="text-2xl font-bold">Playground</h2>
         <p className="mt-1 text-sm text-muted">
-          Test the Scrape API interactively. Results are live.
+          Test the BlazeCrawl APIs interactively. Results are live.
         </p>
       </div>
 
       {/* Input Section */}
       <div className="rounded-xl border border-border bg-surface/60 p-5">
-        {/* URL Input */}
+        {/* API Mode Selector */}
         <div className="mb-4">
-          <label className="mb-2 block text-sm font-medium">URL to Scrape</label>
+          <label className="mb-2 block text-xs font-medium text-muted">API</label>
+          <div className="flex rounded-lg border border-border overflow-hidden">
+            {apiModes.map((mode) => (
+              <button
+                key={mode.value}
+                onClick={() => {
+                  setApiMode(mode.value);
+                  setResult(null);
+                  setUrl("");
+                }}
+                className={`inline-flex items-center gap-1.5 px-4 py-2 text-xs font-medium transition-colors ${
+                  apiMode === mode.value
+                    ? "bg-accent text-white"
+                    : "bg-surface-2 text-muted hover:bg-surface hover:text-foreground"
+                }`}
+              >
+                <mode.icon className="h-3.5 w-3.5" />
+                {mode.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* URL / Query Input */}
+        <div className="mb-4">
+          <label className="mb-2 block text-sm font-medium">
+            {apiMode === "search" ? "Search Query" : "URL"}
+          </label>
           <div className="flex gap-2">
             <input
-              type="url"
+              type={apiMode === "search" ? "text" : "url"}
               value={url}
               onChange={(e) => setUrl(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && !loading && handleScrape()}
-              placeholder="https://example.com"
+              onKeyDown={(e) => e.key === "Enter" && !loading && handleSubmit()}
+              placeholder={
+                apiMode === "search"
+                  ? "e.g. latest AI news"
+                  : apiMode === "map"
+                    ? "https://example.com"
+                    : "https://example.com"
+              }
               className="flex-1 rounded-lg border border-border bg-[#0d1117] px-4 py-2.5 text-sm text-foreground placeholder:text-muted/50 outline-none focus:border-accent/50"
             />
             <button
-              onClick={handleScrape}
+              onClick={handleSubmit}
               disabled={loading || !url.trim()}
               className="inline-flex items-center gap-2 rounded-lg bg-accent px-6 py-2.5 text-sm font-bold text-white transition-colors hover:bg-accent-hover disabled:opacity-40"
             >
               {loading ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  Scraping...
+                  {apiMode === "search" ? "Searching..." : apiMode === "map" ? "Mapping..." : "Scraping..."}
                 </>
               ) : (
                 <>
                   <Play className="h-4 w-4" />
-                  Scrape
+                  {apiMode === "search" ? "Search" : apiMode === "map" ? "Map" : "Scrape"}
                 </>
               )}
             </button>
@@ -178,46 +265,90 @@ export default function Playground() {
 
         {/* Options Row */}
         <div className="flex flex-wrap items-end gap-4">
-          {/* Format */}
-          <div>
-            <label className="mb-2 block text-xs font-medium text-muted">
-              Format
-            </label>
-            <div className="flex rounded-lg border border-border overflow-hidden">
-              {formatOptions.map((opt) => (
-                <button
-                  key={opt.value}
-                  onClick={() => setFormat(opt.value)}
-                  className={`inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium transition-colors ${
-                    format === opt.value
-                      ? "bg-accent text-white"
-                      : "bg-surface-2 text-muted hover:bg-surface hover:text-foreground"
-                  }`}
-                >
-                  <opt.icon className="h-3.5 w-3.5" />
-                  {opt.label}
-                </button>
-              ))}
+          {/* Format (scrape only) */}
+          {apiMode === "scrape" && (
+            <div>
+              <label className="mb-2 block text-xs font-medium text-muted">
+                Format
+              </label>
+              <div className="flex rounded-lg border border-border overflow-hidden">
+                {formatOptions.map((opt) => (
+                  <button
+                    key={opt.value}
+                    onClick={() => setFormat(opt.value)}
+                    className={`inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium transition-colors ${
+                      format === opt.value
+                        ? "bg-accent text-white"
+                        : "bg-surface-2 text-muted hover:bg-surface hover:text-foreground"
+                    }`}
+                  >
+                    <opt.icon className="h-3.5 w-3.5" />
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
-          {/* Only Main Content */}
-          <div>
-            <label className="mb-2 block text-xs font-medium text-muted">
-              Only Main Content
-            </label>
-            <button
-              onClick={() => setOnlyMainContent(!onlyMainContent)}
-              className="inline-flex items-center gap-2 rounded-lg border border-border bg-surface-2 px-3 py-2 text-xs font-medium transition-colors hover:bg-surface"
-            >
-              {onlyMainContent ? (
-                <ToggleRight className="h-4 w-4 text-accent" />
-              ) : (
-                <ToggleLeft className="h-4 w-4 text-muted" />
-              )}
-              {onlyMainContent ? "On" : "Off"}
-            </button>
-          </div>
+          {/* Only Main Content (scrape only) */}
+          {apiMode === "scrape" && (
+            <div>
+              <label className="mb-2 block text-xs font-medium text-muted">
+                Only Main Content
+              </label>
+              <button
+                onClick={() => setOnlyMainContent(!onlyMainContent)}
+                className="inline-flex items-center gap-2 rounded-lg border border-border bg-surface-2 px-3 py-2 text-xs font-medium transition-colors hover:bg-surface"
+              >
+                {onlyMainContent ? (
+                  <ToggleRight className="h-4 w-4 text-accent" />
+                ) : (
+                  <ToggleLeft className="h-4 w-4 text-muted" />
+                )}
+                {onlyMainContent ? "On" : "Off"}
+              </button>
+            </div>
+          )}
+
+          {/* Render JS (scrape only) */}
+          {apiMode === "scrape" && (
+            <div>
+              <label className="mb-2 block text-xs font-medium text-muted">
+                Render JS
+              </label>
+              <button
+                onClick={() => setRenderJs(!renderJs)}
+                className="inline-flex items-center gap-2 rounded-lg border border-border bg-surface-2 px-3 py-2 text-xs font-medium transition-colors hover:bg-surface"
+              >
+                {renderJs ? (
+                  <ToggleRight className="h-4 w-4 text-accent" />
+                ) : (
+                  <ToggleLeft className="h-4 w-4 text-muted" />
+                )}
+                {renderJs ? "On" : "Off"}
+              </button>
+            </div>
+          )}
+
+          {/* Screenshot (scrape only) */}
+          {apiMode === "scrape" && (
+            <div>
+              <label className="mb-2 block text-xs font-medium text-muted">
+                Screenshot
+              </label>
+              <button
+                onClick={() => setScreenshot(!screenshot)}
+                className="inline-flex items-center gap-2 rounded-lg border border-border bg-surface-2 px-3 py-2 text-xs font-medium transition-colors hover:bg-surface"
+              >
+                {screenshot ? (
+                  <ToggleRight className="h-4 w-4 text-accent" />
+                ) : (
+                  <ToggleLeft className="h-4 w-4 text-muted" />
+                )}
+                {screenshot ? "On" : "Off"}
+              </button>
+            </div>
+          )}
 
           {/* Timeout */}
           <div>
@@ -310,6 +441,27 @@ export default function Playground() {
                   {result.data.metadata.language}
                 </span>
               )}
+            </div>
+          )}
+
+          {/* Screenshot */}
+          {result?.success && result?.data?.screenshot && (
+            <div className="border-b border-border/50 p-5">
+              <div className="flex items-center gap-2 mb-3 text-xs font-semibold text-muted">
+                <Camera className="h-3.5 w-3.5 text-accent" />
+                Screenshot
+              </div>
+              <div className="rounded-lg border border-border overflow-hidden bg-white">
+                <img
+                  src={
+                    result.data.screenshot.startsWith("data:")
+                      ? result.data.screenshot
+                      : `data:image/png;base64,${result.data.screenshot}`
+                  }
+                  alt="Page screenshot"
+                  className="w-full h-auto"
+                />
+              </div>
             </div>
           )}
 

@@ -21,12 +21,16 @@ export interface TierConfig {
   monthlyCredits: number;
   maxConcurrent: number;
   rollover: boolean;
+  features: string[];
 }
 
 export const TIERS: Record<string, TierConfig> = {
-  free: { monthlyCredits: 1_000, maxConcurrent: 10, rollover: true },
-  pro: { monthlyCredits: 50_000, maxConcurrent: 100, rollover: true },
-  scale: { monthlyCredits: Infinity, maxConcurrent: 500, rollover: true },
+  free:       { monthlyCredits: 500,         maxConcurrent: 2,   rollover: false, features: ["scrape", "crawl", "map"] },
+  hobby:      { monthlyCredits: 3_000,       maxConcurrent: 5,   rollover: true,  features: ["scrape", "crawl", "map", "extract", "search"] },
+  standard:   { monthlyCredits: 100_000,     maxConcurrent: 50,  rollover: true,  features: ["scrape", "crawl", "map", "extract", "search", "batch", "interact"] },
+  growth:     { monthlyCredits: 500_000,     maxConcurrent: 100, rollover: true,  features: ["scrape", "crawl", "map", "extract", "search", "batch", "interact", "agent"] },
+  scale:      { monthlyCredits: 1_000_000,   maxConcurrent: 150, rollover: true,  features: ["scrape", "crawl", "map", "extract", "search", "batch", "interact", "agent"] },
+  enterprise: { monthlyCredits: Infinity,    maxConcurrent: 500, rollover: true,  features: ["scrape", "crawl", "map", "extract", "search", "batch", "interact", "agent", "sso", "sla", "zero-retention"] },
 };
 
 // ---------------------------------------------------------------------------
@@ -61,7 +65,7 @@ export interface UsageInfo {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function currentMonthKey(): string {
+export function currentMonthKey(): string {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 }

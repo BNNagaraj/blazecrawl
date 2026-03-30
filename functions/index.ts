@@ -20,6 +20,8 @@ app.use(express.json());
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+const USER_AGENT = "BlazeCrawl/1.0 (+https://blazecrawl.dev)";
+
 const TIERS: Record<string, { monthlyCredits: number; maxConcurrent: number }> = {
   free: { monthlyCredits: 1000, maxConcurrent: 10 },
   pro: { monthlyCredits: 50000, maxConcurrent: 100 },
@@ -48,7 +50,7 @@ async function authenticate(req: express.Request, res: express.Response): Promis
 async function scrapeUrl(url: string, options: { format?: string; onlyMainContent?: boolean } = {}) {
   const start = Date.now();
   const response = await fetch(url, {
-    headers: { "User-Agent": "BlazeCrawl/1.0 (+https://blazecrawl.dev)" },
+    headers: { "User-Agent": USER_AGENT },
     signal: AbortSignal.timeout(30000),
   });
 
@@ -144,8 +146,6 @@ app.post("/api/v1/scrape", async (req, res) => {
 // ---------------------------------------------------------------------------
 // POST /api/v1/crawl
 // ---------------------------------------------------------------------------
-const crawlJobs = new Map<string, { status: string; pagesFound: number; pagesCrawled: number; results: unknown[] }>();
-
 app.post("/api/v1/crawl", async (req, res) => {
   try {
     const auth = await authenticate(req, res);
@@ -158,13 +158,23 @@ app.post("/api/v1/crawl", async (req, res) => {
     }
 
     const jobId = uuidv4();
-    crawlJobs.set(jobId, { status: "crawling", pagesFound: 0, pagesCrawled: 0, results: [] });
+    const jobRef = db.collection("crawlJobs").doc(jobId);
+    await jobRef.set({
+      status: "crawling",
+      pagesFound: 0,
+      pagesCrawled: 0,
+      results: [],
+      userId: auth.userId,
+      url,
+      createdAt: new Date().toISOString(),
+    });
 
     // Start crawl in background
     (async () => {
-      const job = crawlJobs.get(jobId)!;
       const visited = new Set<string>();
       const queue = [{ url, depth: 0 }];
+      const results: unknown[] = [];
+      let pagesCrawled = 0;
 
       while (queue.length > 0 && visited.size < maxPages) {
         const item = queue.shift()!;
@@ -173,22 +183,31 @@ app.post("/api/v1/crawl", async (req, res) => {
 
         try {
           const result = await scrapeUrl(item.url);
-          job.pagesCrawled++;
-          job.results.push({ url: item.url, markdown: result.markdown, metadata: result.metadata });
+          pagesCrawled++;
+          results.push({ url: item.url, markdown: result.markdown, metadata: result.metadata });
 
           const links = extractLinks(result.html, item.url);
-          job.pagesFound = visited.size + links.filter((l) => !visited.has(l)).length;
           for (const link of links) {
             if (!visited.has(link) && visited.size + queue.length < maxPages) {
               queue.push({ url: link, depth: item.depth + 1 });
             }
+          }
+
+          // Persist progress every 5 pages
+          if (pagesCrawled % 5 === 0) {
+            await jobRef.update({ pagesCrawled, pagesFound: visited.size, results });
           }
         } catch {
           // Skip failed pages
         }
       }
 
-      job.status = "completed";
+      await jobRef.update({
+        status: "completed",
+        pagesCrawled,
+        pagesFound: visited.size,
+        results,
+      });
     })();
 
     res.json({ success: true, data: { jobId, status: "crawling", url } });
@@ -200,11 +219,12 @@ app.post("/api/v1/crawl", async (req, res) => {
 
 // GET /api/v1/crawl/:id
 app.get("/api/v1/crawl/:id", async (req, res) => {
-  const job = crawlJobs.get(req.params.id);
-  if (!job) {
+  const snap = await db.collection("crawlJobs").doc(req.params.id).get();
+  if (!snap.exists) {
     res.status(404).json({ success: false, error: "Job not found" });
     return;
   }
+  const job = snap.data()!;
   res.json({
     success: true,
     data: {
@@ -235,8 +255,8 @@ app.post("/api/v1/map", async (req, res) => {
 
     // Fetch page + sitemap in parallel
     const [pageRes, sitemapRes] = await Promise.allSettled([
-      fetch(url, { headers: { "User-Agent": "BlazeCrawl/1.0" }, signal: AbortSignal.timeout(15000) }),
-      fetch(`${base.origin}/sitemap.xml`, { headers: { "User-Agent": "BlazeCrawl/1.0" }, signal: AbortSignal.timeout(10000) }),
+      fetch(url, { headers: { "User-Agent": USER_AGENT }, signal: AbortSignal.timeout(15000) }),
+      fetch(`${base.origin}/sitemap.xml`, { headers: { "User-Agent": USER_AGENT }, signal: AbortSignal.timeout(10000) }),
     ]);
 
     if (pageRes.status === "fulfilled") {
@@ -263,10 +283,29 @@ app.post("/api/v1/map", async (req, res) => {
 // ---------------------------------------------------------------------------
 // POST /api/v1/extract
 // ---------------------------------------------------------------------------
+const EXTRACT_COST = 5;
+
 app.post("/api/v1/extract", async (req, res) => {
   try {
     const auth = await authenticate(req, res);
     if (!auth) return;
+
+    // Check credits BEFORE calling Claude API (cost protection)
+    const keySnap = await db.collection("apiKeys").doc(auth.apiKey).get();
+    const keyData = keySnap.data();
+    if (keyData) {
+      const tierConfig = TIERS[auth.tier] || TIERS.free;
+      const month = new Date().toISOString().slice(0, 7);
+      const monthlyUsage = keyData.currentMonth === month ? (keyData.monthlyUsage || 0) : 0;
+      const remaining = tierConfig.monthlyCredits - monthlyUsage;
+      if (remaining < EXTRACT_COST) {
+        res.status(429).json({
+          success: false,
+          error: `Insufficient credits. Extract costs ${EXTRACT_COST} credits. You have ${remaining} remaining.`,
+        });
+        return;
+      }
+    }
 
     const { url, schema, prompt } = req.body;
     if (!url || !schema) {

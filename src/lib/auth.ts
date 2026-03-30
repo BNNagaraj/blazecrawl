@@ -67,7 +67,7 @@ export async function authenticateRequest(
         valid: true,
         userId: "dev-user",
         tier: "free",
-        apiKey: apiKey ?? "dev",
+        apiKey,
         rateLimit: { limit: 1000, remaining: 999 },
       };
     }

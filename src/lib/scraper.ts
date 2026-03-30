@@ -1,6 +1,15 @@
 import { JSDOM } from "jsdom";
 import { Readability } from "@mozilla/readability";
 import TurndownService from "turndown";
+import {
+  renderPage,
+  takeScreenshot,
+  generatePdf,
+  isPlaywrightAvailable,
+} from "@/lib/browser";
+import type { RenderOptions } from "@/lib/browser";
+import { getCached, setCache } from "@/lib/cache";
+import { getRandomUserAgent } from "@/lib/proxy";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -12,6 +21,14 @@ export interface ScrapeOptions {
   includeTags?: string[];
   excludeTags?: string[];
   onlyMainContent?: boolean;
+  /** Use Playwright to render JavaScript before scraping. */
+  renderJs?: boolean;
+  /** Capture a screenshot of the page (base64 PNG). */
+  screenshot?: boolean;
+  /** Generate a PDF of the page (base64). */
+  pdf?: boolean;
+  /** Skip the Firestore response cache. */
+  skipCache?: boolean;
 }
 
 export interface ScrapeResult {
@@ -21,6 +38,8 @@ export interface ScrapeResult {
     markdown?: string;
     html?: string;
     text?: string;
+    screenshot?: string;
+    pdf?: string;
     metadata: {
       title: string;
       description: string;
@@ -125,6 +144,10 @@ export async function scrapeUrl(
     includeTags,
     excludeTags,
     onlyMainContent = true,
+    renderJs = false,
+    screenshot = false,
+    pdf = false,
+    skipCache = false,
   } = options;
 
   // --- Validate URL ---
@@ -132,42 +155,77 @@ export async function scrapeUrl(
     return { success: false, error: "Invalid URL. Must be an http or https URL." };
   }
 
+  // --- Cache check ---
+  if (!skipCache && !screenshot && !pdf) {
+    const cached = await getCached(url);
+    if (cached) return cached;
+  }
+
   const startTime = Date.now();
 
-  // --- Fetch page ---
-  let response: Response;
-  try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeout);
+  // --- Determine rendering path ---
+  const useBrowser = renderJs && isPlaywrightAvailable();
 
-    response = await fetch(url, {
-      headers: {
-        "User-Agent":
-          "BlazeCrawl/1.0 (+https://blazecrawl.dev)",
-        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        ...headers,
-      },
-      signal: controller.signal,
-      redirect: "follow",
-    });
+  let rawHtml: string;
+  let statusCode = 200;
+  let finalUrl = url;
 
-    clearTimeout(timer);
-  } catch (err: unknown) {
-    const message =
-      err instanceof DOMException && err.name === "AbortError"
-        ? `Request timed out after ${timeout}ms`
-        : `Failed to fetch URL: ${err instanceof Error ? err.message : String(err)}`;
-    return { success: false, error: message };
-  }
-
-  if (!response.ok && response.status >= 400) {
-    return {
-      success: false,
-      error: `HTTP ${response.status}: ${response.statusText}`,
+  if (useBrowser) {
+    // ── Browser rendering path ──
+    const renderOpts: RenderOptions = {
+      waitFor: options.waitFor,
+      timeout,
+      headers,
+      userAgent: getRandomUserAgent(),
     };
+
+    const html = await renderPage(url, renderOpts);
+    if (!html) {
+      return {
+        success: false,
+        error: "Browser rendering failed. The page may be unreachable or Playwright encountered an error.",
+      };
+    }
+    rawHtml = html;
+  } else {
+    // ── Fast path: fetch + JSDOM ──
+    let response: Response;
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeout);
+
+      response = await fetch(url, {
+        headers: {
+          "User-Agent":
+            "BlazeCrawl/1.0 (+https://blazecrawl.dev)",
+          Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+          ...headers,
+        },
+        signal: controller.signal,
+        redirect: "follow",
+      });
+
+      clearTimeout(timer);
+    } catch (err: unknown) {
+      const message =
+        err instanceof DOMException && err.name === "AbortError"
+          ? `Request timed out after ${timeout}ms`
+          : `Failed to fetch URL: ${err instanceof Error ? err.message : String(err)}`;
+      return { success: false, error: message };
+    }
+
+    if (!response.ok && response.status >= 400) {
+      return {
+        success: false,
+        error: `HTTP ${response.status}: ${response.statusText}`,
+      };
+    }
+
+    rawHtml = await response.text();
+    statusCode = response.status;
+    finalUrl = response.url;
   }
 
-  const rawHtml = await response.text();
   const loadTimeMs = Date.now() - startTime;
 
   // --- Parse with JSDOM ---
@@ -182,7 +240,7 @@ export async function scrapeUrl(
   }
 
   const doc = dom.window.document;
-  const metadata = extractMetadata(doc, response.status, loadTimeMs);
+  const metadata = extractMetadata(doc, statusCode, loadTimeMs);
 
   // Apply tag filters
   applyTagFilters(doc, includeTags, excludeTags);
@@ -207,7 +265,7 @@ export async function scrapeUrl(
   const result: ScrapeResult = {
     success: true,
     data: {
-      url: response.url, // final URL after redirects
+      url: finalUrl, // final URL after redirects
       metadata,
     },
   };
@@ -238,6 +296,44 @@ export async function scrapeUrl(
       result.data!.markdown = td.turndown(contentHtml);
       break;
     }
+  }
+
+  // --- Screenshot & PDF (browser-only features) ---
+  if (screenshot && isPlaywrightAvailable()) {
+    try {
+      const buf = await takeScreenshot(url, {
+        waitFor: options.waitFor,
+        timeout,
+        headers,
+        fullPage: true,
+      });
+      if (buf) {
+        result.data!.screenshot = buf.toString("base64");
+      }
+    } catch {
+      // Non-fatal: screenshot failed but scrape data is still valid
+    }
+  }
+
+  if (pdf && isPlaywrightAvailable()) {
+    try {
+      const buf = await generatePdf(url, {
+        waitFor: options.waitFor,
+        timeout,
+        headers,
+      });
+      if (buf) {
+        result.data!.pdf = buf.toString("base64");
+      }
+    } catch {
+      // Non-fatal: PDF generation failed but scrape data is still valid
+    }
+  }
+
+  // --- Write to cache ---
+  if (!skipCache && !screenshot && !pdf) {
+    // Don't await — fire and forget so we don't slow down the response
+    setCache(url, result).catch(() => {});
   }
 
   return result;

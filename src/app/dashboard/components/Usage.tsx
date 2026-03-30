@@ -23,21 +23,36 @@ interface PlanInfo {
   price: string;
   creditsTotal: number;
   creditsUsed: number;
+  concurrent: number;
+  tierKey: string;
 }
 
-const TIER_INFO: Record<string, { name: string; price: string; credits: number }> = {
-  free: { name: "Free", price: "$0/mo", credits: 1000 },
-  pro: { name: "Pro", price: "$29/mo", credits: 50000 },
-  scale: { name: "Scale", price: "$99/mo", credits: 999999 },
+const TIER_INFO: Record<string, { name: string; price: string; credits: number; concurrent: number }> = {
+  free:       { name: "Free",       price: "$0",      credits: 500,       concurrent: 2   },
+  hobby:      { name: "Hobby",      price: "$16/mo",  credits: 3000,      concurrent: 5   },
+  standard:   { name: "Standard",   price: "$83/mo",  credits: 100000,    concurrent: 50  },
+  growth:     { name: "Growth",     price: "$333/mo", credits: 500000,    concurrent: 100 },
+  scale:      { name: "Scale",      price: "$599/mo", credits: 1000000,   concurrent: 150 },
+  enterprise: { name: "Enterprise", price: "Custom",  credits: Infinity,  concurrent: 500 },
+};
+
+const UPGRADE_PATH: Record<string, string> = {
+  free: "hobby",
+  hobby: "standard",
+  standard: "growth",
+  growth: "scale",
+  scale: "enterprise",
 };
 
 export default function Usage() {
   const { user } = useAuth();
   const [plan, setPlan] = useState<PlanInfo>({
     name: "Free",
-    price: "$0/mo",
-    creditsTotal: 1000,
+    price: "$0",
+    creditsTotal: 500,
     creditsUsed: 0,
+    concurrent: 2,
+    tierKey: "free",
   });
   const [loading, setLoading] = useState(true);
 
@@ -71,6 +86,8 @@ export default function Usage() {
           price: tierInfo.price,
           creditsTotal: tierInfo.credits,
           creditsUsed,
+          concurrent: tierInfo.concurrent,
+          tierKey: tier,
         });
       } catch {
         // Firestore not available
@@ -81,10 +98,15 @@ export default function Usage() {
     loadUsage();
   }, [user]);
 
-  const usedPct = plan.creditsTotal > 0
-    ? Math.round((plan.creditsUsed / plan.creditsTotal) * 100)
-    : 0;
-  const remaining = plan.creditsTotal - plan.creditsUsed;
+  const isUnlimited = !isFinite(plan.creditsTotal);
+  const usedPct = isUnlimited
+    ? 0
+    : plan.creditsTotal > 0
+      ? Math.round((plan.creditsUsed / plan.creditsTotal) * 100)
+      : 0;
+  const remaining = isUnlimited ? Infinity : plan.creditsTotal - plan.creditsUsed;
+  const nextTier = UPGRADE_PATH[plan.tierKey];
+  const nextTierInfo = nextTier ? TIER_INFO[nextTier] : null;
 
   if (loading) {
     return (
@@ -121,12 +143,15 @@ export default function Usage() {
               {plan.name}
             </span>
           </div>
-          <div className="flex items-baseline gap-2 mb-4">
+          <div className="flex items-baseline gap-2 mb-2">
             <span className="text-3xl font-extrabold">{plan.price}</span>
             <span className="text-sm text-muted">
-              {plan.creditsTotal.toLocaleString()} pages/mo
+              {isUnlimited ? "Unlimited pages/mo" : `${plan.creditsTotal.toLocaleString()} pages/mo`}
             </span>
           </div>
+          <p className="text-xs text-muted mb-4">
+            {plan.concurrent} concurrent requests
+          </p>
           <button className="w-full rounded-lg border border-border bg-surface-2 py-2.5 text-sm font-semibold text-foreground transition-colors hover:bg-surface">
             Manage Subscription
           </button>
@@ -141,7 +166,7 @@ export default function Usage() {
             <div>
               <h3 className="text-sm font-semibold">Credits This Month</h3>
               <p className="text-xs text-muted">
-                {remaining.toLocaleString()} remaining
+                {isUnlimited ? "Unlimited remaining" : `${remaining.toLocaleString()} remaining`}
               </p>
             </div>
           </div>
@@ -152,28 +177,30 @@ export default function Usage() {
               <span className="text-muted">
                 {plan.creditsUsed.toLocaleString()} used
               </span>
-              <span className="font-semibold text-accent">{usedPct}%</span>
+              <span className="font-semibold text-accent">
+                {isUnlimited ? "Unlimited" : `${usedPct}%`}
+              </span>
             </div>
             <div className="h-3 w-full rounded-full bg-surface-2 overflow-hidden">
               <div
                 className="h-full rounded-full bg-gradient-to-r from-accent to-amber-400 transition-all duration-500"
-                style={{ width: `${usedPct}%` }}
+                style={{ width: isUnlimited ? "100%" : `${usedPct}%` }}
               />
             </div>
           </div>
 
           <div className="flex items-center justify-between text-xs text-muted mt-3">
             <span>
-              {plan.creditsTotal.toLocaleString()} total credits
+              {isUnlimited ? "Unlimited" : `${plan.creditsTotal.toLocaleString()}`} total credits
             </span>
             <span>Overage: $0.001/page</span>
           </div>
 
-          {plan.name === "Free" && (
+          {nextTierInfo && (
             <button className="mt-4 w-full rounded-lg bg-accent py-2.5 text-sm font-bold text-white transition-colors hover:bg-accent-hover">
               <span className="inline-flex items-center gap-1.5">
                 <ArrowUpRight className="h-4 w-4" />
-                Upgrade Plan
+                Upgrade to {nextTierInfo.name} ({nextTierInfo.price})
               </span>
             </button>
           )}
@@ -223,11 +250,17 @@ export default function Usage() {
               </div>
               <div className="flex justify-between">
                 <span className="text-muted">Monthly Limit</span>
-                <span className="font-medium">{plan.creditsTotal.toLocaleString()} pages</span>
+                <span className="font-medium">
+                  {isUnlimited ? "Unlimited" : `${plan.creditsTotal.toLocaleString()} pages`}
+                </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted">Used</span>
                 <span className="font-medium">{plan.creditsUsed.toLocaleString()} pages</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted">Concurrent Requests</span>
+                <span className="font-medium">{plan.concurrent}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted">Credits Rollover</span>

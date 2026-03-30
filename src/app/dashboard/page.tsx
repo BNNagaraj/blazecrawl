@@ -14,7 +14,6 @@ import {
   X,
   Zap,
   Globe,
-  Clock,
   Activity,
   ChevronRight,
   Inbox,
@@ -37,6 +36,15 @@ import Usage from "./components/Usage";
 /*  Types                                                              */
 /* ------------------------------------------------------------------ */
 type Section = "overview" | "api-keys" | "playground" | "usage" | "docs";
+
+const TIER_MAP: Record<string, { name: string; credits: number }> = {
+  free:       { name: "Free",       credits: 500       },
+  hobby:      { name: "Hobby",      credits: 3000      },
+  standard:   { name: "Standard",   credits: 100000    },
+  growth:     { name: "Growth",     credits: 500000    },
+  scale:      { name: "Scale",      credits: 1000000   },
+  enterprise: { name: "Enterprise", credits: Infinity   },
+};
 
 interface NavItem {
   id: Section;
@@ -96,19 +104,23 @@ interface ActivityItem {
 }
 
 interface OverviewStats {
-  totalScrapes: number;
-  pagesThisMonth: number;
+  totalApiCalls: number;
+  creditsUsed: number;
+  creditsRemaining: number;
   activeKeys: number;
-  revokedKeys: number;
+  tierName: string;
+  creditsTotal: number;
 }
 
 function Overview({ onNavigate }: { onNavigate: (s: Section) => void }) {
   const { user } = useAuth();
   const [stats, setStats] = useState<OverviewStats>({
-    totalScrapes: 0,
-    pagesThisMonth: 0,
+    totalApiCalls: 0,
+    creditsUsed: 0,
+    creditsRemaining: 0,
     activeKeys: 0,
-    revokedKeys: 0,
+    tierName: "Free",
+    creditsTotal: 500,
   });
   const [activity, setActivity] = useState<ActivityItem[]>([]);
   const [loaded, setLoaded] = useState(false);
@@ -125,23 +137,47 @@ function Overview({ onNavigate }: { onNavigate: (s: Section) => void }) {
         const keysQ = query(keysRef, where("userId", "==", user!.uid));
         const keysSnap = await getDocs(keysQ);
 
-        let totalScrapes = 0;
-        let pagesThisMonth = 0;
+        let creditsUsed = 0;
         let activeKeys = 0;
-        let revokedKeys = 0;
+        let tier = "free";
         const month = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}`;
 
         keysSnap.forEach((d) => {
           const data = d.data();
-          totalScrapes += data.lifetimeUsage || 0;
+          tier = data.tier || "free";
           if (data.currentMonth === month) {
-            pagesThisMonth += data.monthlyUsage || 0;
+            creditsUsed += data.monthlyUsage || 0;
           }
           if (data.active) activeKeys++;
-          else revokedKeys++;
         });
 
-        setStats({ totalScrapes, pagesThisMonth, activeKeys, revokedKeys });
+        const tierInfo = TIER_MAP[tier] || TIER_MAP.free;
+        const creditsTotal = tierInfo.credits;
+        const creditsRemaining = isFinite(creditsTotal) ? creditsTotal - creditsUsed : Infinity;
+
+        // Count total API calls from activity collection
+        let totalApiCalls = 0;
+        try {
+          const actRef = collection(db, "activity");
+          const actCountQ = query(actRef, where("userId", "==", user!.uid));
+          const actCountSnap = await getDocs(actCountQ);
+          totalApiCalls = actCountSnap.size;
+        } catch {
+          // activity collection may not exist
+          // fallback to lifetime usage from keys
+          keysSnap.forEach((d) => {
+            totalApiCalls += d.data().lifetimeUsage || 0;
+          });
+        }
+
+        setStats({
+          totalApiCalls,
+          creditsUsed,
+          creditsRemaining: isFinite(creditsRemaining) ? creditsRemaining : 0,
+          activeKeys,
+          tierName: tierInfo.name,
+          creditsTotal,
+        });
 
         // Load recent activity
         const activityRef = collection(db, "activity");
@@ -198,47 +234,46 @@ function Overview({ onNavigate }: { onNavigate: (s: Section) => void }) {
       {/* Stats Grid */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-8">
         <StatCard
-          label="Total Scrapes"
-          value={stats.totalScrapes.toLocaleString()}
-          sub={stats.totalScrapes === 0 ? "Make your first scrape!" : "Lifetime usage"}
+          label="Total API Calls"
+          value={stats.totalApiCalls.toLocaleString()}
+          sub={stats.totalApiCalls === 0 ? "Make your first API call!" : "From activity log"}
           icon={Globe}
         />
         <StatCard
-          label="Pages This Month"
-          value={stats.pagesThisMonth.toLocaleString()}
-          sub={`Resets next month`}
+          label="Credits Used"
+          value={stats.creditsUsed.toLocaleString()}
+          sub="This month"
           icon={Activity}
         />
         <StatCard
-          label="API Keys"
-          value={String(stats.activeKeys)}
-          sub={`${stats.activeKeys} active, ${stats.revokedKeys} revoked`}
-          icon={Key}
+          label="Credits Remaining"
+          value={
+            isFinite(stats.creditsTotal)
+              ? stats.creditsRemaining.toLocaleString()
+              : "Unlimited"
+          }
+          sub={
+            isFinite(stats.creditsTotal)
+              ? `of ${stats.creditsTotal.toLocaleString()} total`
+              : `${stats.tierName} plan`
+          }
+          icon={Zap}
         />
         <StatCard
-          label="Account"
-          value={user?.email ? "Active" : "Setup"}
-          sub={user?.email || "Sign in to get started"}
-          icon={Clock}
+          label="API Keys Active"
+          value={String(stats.activeKeys)}
+          sub={stats.activeKeys === 0 ? "Create your first key" : `${stats.activeKeys} key${stats.activeKeys > 1 ? "s" : ""} active`}
+          icon={Key}
         />
       </div>
 
       {/* Quick Actions */}
+      <div className="mb-4">
+        <h3 className="text-sm font-semibold text-muted uppercase tracking-wider mb-3">
+          Quick Actions
+        </h3>
+      </div>
       <div className="grid gap-4 sm:grid-cols-3 mb-8">
-        <button
-          onClick={() => onNavigate("playground")}
-          className="group flex items-center gap-3 rounded-xl border border-border/60 bg-surface/60 p-4 text-left transition-all hover:border-accent/40 hover:bg-surface"
-        >
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-accent/10 transition-colors group-hover:bg-accent/20">
-            <FlaskConical className="h-5 w-5 text-accent" />
-          </div>
-          <div className="flex-1">
-            <span className="text-sm font-semibold">Open Playground</span>
-            <p className="text-xs text-muted">Test a scrape now</p>
-          </div>
-          <ChevronRight className="h-4 w-4 text-muted transition-colors group-hover:text-accent" />
-        </button>
-
         <button
           onClick={() => onNavigate("api-keys")}
           className="group flex items-center gap-3 rounded-xl border border-border/60 bg-surface/60 p-4 text-left transition-all hover:border-accent/40 hover:bg-surface"
@@ -247,22 +282,36 @@ function Overview({ onNavigate }: { onNavigate: (s: Section) => void }) {
             <Key className="h-5 w-5 text-accent" />
           </div>
           <div className="flex-1">
-            <span className="text-sm font-semibold">Manage API Keys</span>
-            <p className="text-xs text-muted">Create or revoke keys</p>
+            <span className="text-sm font-semibold">New API Key</span>
+            <p className="text-xs text-muted">Generate a new key</p>
           </div>
           <ChevronRight className="h-4 w-4 text-muted transition-colors group-hover:text-accent" />
         </button>
 
         <button
-          onClick={() => onNavigate("usage")}
+          onClick={() => onNavigate("docs")}
           className="group flex items-center gap-3 rounded-xl border border-border/60 bg-surface/60 p-4 text-left transition-all hover:border-accent/40 hover:bg-surface"
         >
           <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-accent/10 transition-colors group-hover:bg-accent/20">
-            <BarChart3 className="h-5 w-5 text-accent" />
+            <BookOpen className="h-5 w-5 text-accent" />
           </div>
           <div className="flex-1">
-            <span className="text-sm font-semibold">View Usage</span>
-            <p className="text-xs text-muted">Check your credits</p>
+            <span className="text-sm font-semibold">View Docs</span>
+            <p className="text-xs text-muted">API reference & guides</p>
+          </div>
+          <ChevronRight className="h-4 w-4 text-muted transition-colors group-hover:text-accent" />
+        </button>
+
+        <button
+          onClick={() => onNavigate("playground")}
+          className="group flex items-center gap-3 rounded-xl border border-border/60 bg-surface/60 p-4 text-left transition-all hover:border-accent/40 hover:bg-surface"
+        >
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-accent/10 transition-colors group-hover:bg-accent/20">
+            <FlaskConical className="h-5 w-5 text-accent" />
+          </div>
+          <div className="flex-1">
+            <span className="text-sm font-semibold">Test API</span>
+            <p className="text-xs text-muted">Open the Playground</p>
           </div>
           <ChevronRight className="h-4 w-4 text-muted transition-colors group-hover:text-accent" />
         </button>
@@ -385,6 +434,7 @@ export default function DashboardPage() {
   const router = useRouter();
   const [section, setSection] = useState<Section>("overview");
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [tierName, setTierName] = useState("Free");
 
   // Redirect to login if not authenticated
   useEffect(() => {
@@ -392,6 +442,28 @@ export default function DashboardPage() {
       router.push("/login");
     }
   }, [user, loading, router]);
+
+  // Load user tier for sidebar badge
+  useEffect(() => {
+    if (!user || !db) return;
+    async function loadTier() {
+      try {
+        const keysRef = collection(db, "apiKeys");
+        const q = query(keysRef, where("userId", "==", user!.uid));
+        const snap = await getDocs(q);
+        let tier = "free";
+        snap.forEach((d) => {
+          const data = d.data();
+          if (data.tier) tier = data.tier;
+        });
+        const info = TIER_MAP[tier] || TIER_MAP.free;
+        setTierName(info.name);
+      } catch {
+        // silent
+      }
+    }
+    loadTier();
+  }, [user]);
 
   const renderContent = () => {
     switch (section) {
@@ -483,7 +555,7 @@ export default function DashboardPage() {
           <div className="rounded-lg bg-accent/5 border border-accent/20 p-3">
             <div className="flex items-center gap-2 mb-2">
               <Zap className="h-4 w-4 text-accent" />
-              <span className="text-xs font-semibold">Free Plan</span>
+              <span className="text-xs font-semibold">{tierName} Plan</span>
             </div>
             <p className="text-[10px] text-muted truncate">
               {user?.email || "Not signed in"}

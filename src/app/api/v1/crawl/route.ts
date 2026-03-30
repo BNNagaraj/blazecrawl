@@ -3,16 +3,34 @@ import { scrapeUrl, extractLinks } from "@/lib/scraper";
 import { authenticateRequest, trackUsage } from "@/lib/auth";
 import { withCors, optionsResponse } from "@/lib/cors";
 import { v4 as uuidv4 } from "uuid";
+import { doc, setDoc, updateDoc } from "firebase/firestore";
+import { getAppDb } from "@/lib/firebase";
 
 export const dynamic = "force-dynamic";
 
-// In-memory crawl job store (replaced by persistent store in production)
-const crawlJobs = new Map<
-  string,
-  { status: string; pagesFound: number; pagesCrawled: number; results: unknown[] }
->();
+const CRAWL_JOBS_COLLECTION = "crawlJobs";
 
-export { crawlJobs };
+interface CrawlJob {
+  status: string;
+  pagesFound: number;
+  pagesCrawled: number;
+  results: unknown[];
+  userId: string;
+  url: string;
+  createdAt: string;
+}
+
+function crawlJobRef(jobId: string) {
+  return doc(getAppDb(), CRAWL_JOBS_COLLECTION, jobId);
+}
+
+async function setCrawlJob(jobId: string, data: CrawlJob): Promise<void> {
+  await setDoc(crawlJobRef(jobId), data);
+}
+
+async function updateCrawlJob(jobId: string, data: Partial<CrawlJob>): Promise<void> {
+  await updateDoc(crawlJobRef(jobId), data);
+}
 
 export async function OPTIONS() {
   return optionsResponse();
@@ -33,13 +51,23 @@ export async function POST(req: NextRequest) {
     }
 
     const jobId = uuidv4();
-    crawlJobs.set(jobId, { status: "crawling", pagesFound: 0, pagesCrawled: 0, results: [] });
+    const job: CrawlJob = {
+      status: "crawling",
+      pagesFound: 0,
+      pagesCrawled: 0,
+      results: [],
+      userId: auth.userId!,
+      url,
+      createdAt: new Date().toISOString(),
+    };
+    await setCrawlJob(jobId, job);
 
     // Start crawl in background
     (async () => {
-      const job = crawlJobs.get(jobId)!;
       const visited = new Set<string>();
       const queue = [{ url, depth: 0 }];
+      const results: unknown[] = [];
+      let pagesCrawled = 0;
 
       while (queue.length > 0 && visited.size < maxPages) {
         const item = queue.shift()!;
@@ -47,24 +75,26 @@ export async function POST(req: NextRequest) {
         visited.add(item.url);
 
         try {
-          const result = await scrapeUrl(item.url);
+          const result = await scrapeUrl(item.url, { format: "json" });
           if (result.success && result.data) {
-            job.pagesCrawled++;
-            job.results.push({
+            pagesCrawled++;
+            results.push({
               url: item.url,
               markdown: result.data.markdown,
               metadata: result.data.metadata,
             });
 
-            // Get raw HTML for link extraction
-            const htmlResult = await scrapeUrl(item.url, { format: "html" });
-            if (htmlResult.success && htmlResult.data?.html) {
-              const links = extractLinks(htmlResult.data.html, item.url);
-              job.pagesFound = visited.size + links.filter((l) => !visited.has(l)).length;
+            if (result.data.html) {
+              const links = extractLinks(result.data.html, item.url);
+              const pagesFound = visited.size + links.filter((l) => !visited.has(l)).length;
               for (const link of links) {
                 if (!visited.has(link) && visited.size + queue.length < maxPages) {
                   queue.push({ url: link, depth: item.depth + 1 });
                 }
+              }
+              // Persist progress periodically (every 5 pages)
+              if (pagesCrawled % 5 === 0) {
+                await updateCrawlJob(jobId, { pagesCrawled, pagesFound, results });
               }
             }
           }
@@ -73,8 +103,13 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      job.status = "completed";
-      await trackUsage(auth.apiKey!, job.pagesCrawled);
+      await updateCrawlJob(jobId, {
+        status: "completed",
+        pagesCrawled,
+        pagesFound: visited.size,
+        results,
+      });
+      await trackUsage(auth.apiKey!, pagesCrawled);
     })();
 
     return withCors({ success: true, data: { jobId, status: "crawling", url } });

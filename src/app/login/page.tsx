@@ -151,89 +151,65 @@ export default function LoginPage() {
     return map[code] || "Something went wrong. Please try again.";
   }
 
+  /* ---- Auth helpers ---- */
+  function requireAuth(): boolean {
+    if (!auth) {
+      addToast("error", "Firebase is not configured. Please set up environment variables.");
+      return false;
+    }
+    return true;
+  }
+
+  async function withAuthLoading(fn: () => Promise<void>) {
+    setLoading(true);
+    try {
+      await fn();
+    } catch (err: unknown) {
+      const code = (err as { code?: string }).code || "";
+      addToast("error", firebaseErrorMessage(code));
+    } finally {
+      setLoading(false);
+    }
+  }
+
   /* ---- Auth handlers ---- */
   async function handleEmailAuth(e: React.FormEvent) {
     e.preventDefault();
-    if (!auth) {
-      addToast("error", "Firebase is not configured. Please set up environment variables.");
-      return;
-    }
-    setLoading(true);
-    try {
+    if (!requireAuth()) return;
+    await withAuthLoading(async () => {
       if (tab === "signup") {
-        const cred = await createUserWithEmailAndPassword(auth, email, password);
+        const cred = await createUserWithEmailAndPassword(auth!, email, password);
         if (name) {
           await updateProfile(cred.user, { displayName: name });
         }
         addToast("success", "Account created successfully!");
       } else {
-        await signInWithEmailAndPassword(auth, email, password);
+        await signInWithEmailAndPassword(auth!, email, password);
         addToast("success", "Welcome back!");
       }
       router.push("/dashboard");
-    } catch (err: unknown) {
-      const code = (err as { code?: string }).code || "";
-      addToast("error", firebaseErrorMessage(code));
-    } finally {
-      setLoading(false);
-    }
+    });
   }
 
   async function handleForgotPassword() {
-    if (!auth) {
-      addToast("error", "Firebase is not configured.");
-      return;
-    }
+    if (!requireAuth()) return;
     if (!email.trim()) {
       addToast("error", "Please enter your email address first.");
       return;
     }
-    setLoading(true);
-    try {
-      await sendPasswordResetEmail(auth, email);
+    await withAuthLoading(async () => {
+      await sendPasswordResetEmail(auth!, email);
       addToast("success", "Password reset email sent! Check your inbox.");
-    } catch (err: unknown) {
-      const code = (err as { code?: string }).code || "";
-      addToast("error", firebaseErrorMessage(code));
-    } finally {
-      setLoading(false);
-    }
+    });
   }
 
-  async function handleGoogleSignIn() {
-    if (!auth) {
-      addToast("error", "Firebase is not configured. Please set up environment variables.");
-      return;
-    }
-    setLoading(true);
-    try {
-      await signInWithPopup(auth, new GoogleAuthProvider());
-      addToast("success", "Signed in with Google!");
+  async function handleSocialSignIn(provider: GoogleAuthProvider | GithubAuthProvider, label: string) {
+    if (!requireAuth()) return;
+    await withAuthLoading(async () => {
+      await signInWithPopup(auth!, provider);
+      addToast("success", `Signed in with ${label}!`);
       router.push("/dashboard");
-    } catch (err: unknown) {
-      const code = (err as { code?: string }).code || "";
-      addToast("error", firebaseErrorMessage(code));
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function handleGithubSignIn() {
-    if (!auth) {
-      addToast("error", "Firebase is not configured. Please set up environment variables.");
-      return;
-    }
-    setLoading(true);
-    try {
-      await signInWithPopup(auth, new GithubAuthProvider());
-      addToast("success", "Signed in with GitHub!");
-      router.push("/dashboard");
-    } catch (err: unknown) {
-      const code = (err as { code?: string }).code || "";
-      addToast("error", firebaseErrorMessage(code));
-    } finally {
-      setLoading(false);
-    }
+    });
   }
 
   return (
@@ -378,7 +354,7 @@ export default function LoginPage() {
           {/* Social buttons */}
           <div className="flex gap-3">
             <button
-              onClick={handleGoogleSignIn}
+              onClick={() => handleSocialSignIn(new GoogleAuthProvider(), "Google")}
               disabled={loading}
               className="flex flex-1 items-center justify-center gap-2.5 rounded-xl border border-border/60 bg-background/60 py-3 text-sm font-medium text-foreground transition-colors hover:bg-surface-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
@@ -386,7 +362,7 @@ export default function LoginPage() {
               Google
             </button>
             <button
-              onClick={handleGithubSignIn}
+              onClick={() => handleSocialSignIn(new GithubAuthProvider(), "GitHub")}
               disabled={loading}
               className="flex flex-1 items-center justify-center gap-2.5 rounded-xl border border-border/60 bg-background/60 py-3 text-sm font-medium text-foreground transition-colors hover:bg-surface-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >

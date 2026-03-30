@@ -37,11 +37,13 @@ export function getAppDb(): Firestore {
   return _db;
 }
 
-function hasConfig(): boolean {
-  return !!(firebaseConfig.apiKey && firebaseConfig.projectId);
+function isClientWithConfig(): boolean {
+  return typeof window !== "undefined" && !!(firebaseConfig.apiKey && firebaseConfig.projectId);
 }
 
-// Legacy exports — safe to import; they return null when Firebase isn't configured
-export const auth = typeof window !== "undefined" && hasConfig() ? getAppAuth() : (null as unknown as Auth);
-export const db = typeof window !== "undefined" && hasConfig() ? getAppDb() : (null as unknown as Firestore);
-export default typeof window !== "undefined" && hasConfig() ? getApp() : (null as unknown as FirebaseApp);
+// Legacy exports — safe to import; they return null when Firebase isn't configured.
+// Consumers should null-check before use (e.g., `if (!auth) return`).
+// The casts preserve backward compatibility with existing consumer code.
+export const auth = isClientWithConfig() ? getAppAuth() : (null as unknown as Auth);
+export const db = isClientWithConfig() ? getAppDb() : (null as unknown as Firestore);
+export default isClientWithConfig() ? getApp() : (null as unknown as FirebaseApp);
